@@ -15,8 +15,8 @@ kotlin {
 
 dependencies {
     // AGP API — Gradle 运行时已有，compileOnly 避免打包
-    compileOnly("com.android.tools.build:gradle:7.4.2")
-    compileOnly("com.android.tools.build:gradle-api:7.4.2")
+    compileOnly("com.android.tools.build:gradle:7.3.1")
+    compileOnly("com.android.tools.build:gradle-api:7.3.1")
 
     // ASM — 编译期字节码操作
     implementation("org.ow2.asm:asm:9.6")
