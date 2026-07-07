@@ -39,7 +39,7 @@ class AopLogPlugin : Plugin<Project> {
                 //   EXTERNAL_LIBRARIES → 只插桩第三方库
                 transformClassesWith(
                     LogClassVisitorFactory::class.java,
-                    InstrumentationScope.PROJECT
+                    InstrumentationScope.ALL
                 ) { params ->
                     params.matchAnnotations.set(extension.matchAnnotations)
                     params.matchPatterns.set(extension.matchPatterns)
