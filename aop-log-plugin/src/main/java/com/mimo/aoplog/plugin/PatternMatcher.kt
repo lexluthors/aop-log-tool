@@ -48,41 +48,20 @@ object PatternMatcher {
      * - "com.example.Foo"        → "com.example.Foo"
      */
     private fun extractClassPattern(pattern: String): String {
-        // 以 .** 结尾 → 递归子包通配，整体是类名 pattern
         if (pattern.endsWith(".**")) return pattern
-        // 以 .* 结尾 → 需要判断是"类名通配"还是"方法名通配"
-        // 规则：如果 .* 前面还有 * 或通配符，说明最后 .* 是方法名部分
         if (pattern.endsWith(".*")) {
-            val withoutLast = pattern.dropLast(2) // 去掉最后的 .*
-            // 如果去掉最后 .* 后以 .* 或 .** 结尾，说明最后 .* 是方法名通配
-            if (withoutLast.endsWith(".*") || withoutLast.endsWith(".**")) {
-                return withoutLast
-            }
-            // 如果去掉最后 .* 后的剩余部分不含 "/" 且不含大写开头（非类名），
-            // 也即最后 .* 前面的部分像包名 → 最后 .* 是类名通配
-            // 否则最后 .* 是方法名通配
-            // 简单策略：检查最后 .* 前面的段是否含有通配符
+            val withoutLast = pattern.dropLast(2)
+            if (withoutLast.endsWith(".*") || withoutLast.endsWith(".**")) return withoutLast
             val lastDot = withoutLast.lastIndexOf('.')
-            if (lastDot >= 0) {
-                val lastSegment = withoutLast.substring(lastDot + 1)
-                if (lastSegment.contains("*")) {
-                    // 最后 .* 前面是通配符（如 *.），说明 .* 是方法名部分
-                    return withoutLast
-                }
-            }
-            // 最后 .* 前面是具体类名（如 Foo），说明这个 .* 是方法名部分
-            // 此时类名部分就是 withoutLast（即 com.example.Foo）
-            return withoutLast
+            val lastSeg = if (lastDot >= 0) withoutLast.substring(lastDot + 1) else withoutLast
+            if (lastSeg.contains("*")) return withoutLast
+            if (lastSeg.isNotEmpty() && lastSeg[0].isUpperCase()) return withoutLast
+            return pattern
         }
-        // 不含通配符 → 可能是完整类名或 类名.方法名
-        // 判断最后一段：大写开头 → 类名；小写开头 → 方法名
         val lastDot = pattern.lastIndexOf('.')
         if (lastDot >= 0) {
-            val lastSegment = pattern.substring(lastDot + 1)
-            if (lastSegment.isNotEmpty() && lastSegment[0].isLowerCase()) {
-                // 最后一段小写开头 → 是方法名，剥离
-                return pattern.substring(0, lastDot)
-            }
+            val seg = pattern.substring(lastDot + 1)
+            if (seg.isNotEmpty() && seg[0].isLowerCase()) return pattern.substring(0, lastDot)
         }
         return pattern
     }

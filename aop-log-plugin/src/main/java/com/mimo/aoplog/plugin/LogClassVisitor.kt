@@ -109,44 +109,46 @@ class LogClassVisitor(
         // 排除规则
         if (PatternMatcher.matches(dotClassName, name, excludePatterns)) return false
 
-        // 方法级匹配：如果 pattern 指定了具体方法名，只插桩匹配的方法
-        // 例如 "com.example.Foo.onCreate" 只插桩 onCreate，不插桩 Foo 的其他方法
+        // 方法级匹配：每个 pattern 独立评估，任一匹配即插桩（OR 逻辑）
+        // 例如同时配置 Foo.* 和 Foo.doSomething → Foo 所有方法 + doSomething 都会被插桩
+        // 例如只配置 Foo.doSomething → 只有 doSomething 被插桩
         if (matchPatterns.isNotEmpty()) {
-            val hasMethodSpecificPattern = matchPatterns.any { pattern ->
-                val classPattern = extractClassPart(pattern)
-                // 如果 pattern 的类名部分能匹配当前类，且方法名部分不是通配符
-                PatternMatcher.matchesClassSinglePublic(dotClassName, classPattern) &&
-                    extractMethodPart(pattern) != "*" && extractMethodPart(pattern) != "**"
+            val matched = matchPatterns.any { pattern ->
+                val classPart = extractClassPart(pattern)
+                val methodPart = extractMethodPart(pattern)
+                PatternMatcher.matchesClassSinglePublic(dotClassName, classPart) &&
+                    (methodPart == "*" || methodPart == "**" || methodPart == name)
             }
-            if (hasMethodSpecificPattern) {
-                // 只匹配指定了方法名的 pattern
-                val matched = matchPatterns.any { pattern ->
-                    val methodPart = extractMethodPart(pattern)
-                    (methodPart == "*" || methodPart == "**" || methodPart == name) &&
-                        PatternMatcher.matchesClassSinglePublic(
-                            dotClassName, extractClassPart(pattern)
-                        )
-                }
-                if (!matched) return false
-            }
+            if (!matched) return false
         }
 
         return true
     }
 
-    /** 从 pattern 中提取类名部分（和 PatternMatcher.extractClassPattern 逻辑一致） */
+    /** 从 pattern 中提取类名部分 */
     private fun extractClassPart(pattern: String): String {
         if (pattern.endsWith(".**")) return pattern
         if (pattern.endsWith(".*")) {
-            val withoutLast = pattern.dropLast(2)
+            val withoutLast = pattern.dropLast(2) // 去掉最后的 .*
+            // 如果去掉 .* 后以 .* 或 .** 结尾，说明最后的 .* 是方法通配
             if (withoutLast.endsWith(".*") || withoutLast.endsWith(".**")) return withoutLast
+            // 关键判断：去掉 .* 后最后一段是否大写开头（类名约定）
             val lastDot = withoutLast.lastIndexOf('.')
-            if (lastDot >= 0) {
-                val seg = withoutLast.substring(lastDot + 1)
-                if (seg.contains("*")) return withoutLast
+            val lastSeg = if (lastDot >= 0) withoutLast.substring(lastDot + 1) else withoutLast
+            if (lastSeg.contains("*")) {
+                // 最后一段是通配符（如 *），说明 .* 是方法通配，返回 withoutLast
+                return withoutLast
             }
-            return withoutLast
+            if (lastSeg.isNotEmpty() && lastSeg[0].isUpperCase()) {
+                // 最后一段大写开头 → 是类名，.* 是方法通配
+                // 例如 SampleActivity.* → 类名是 SampleActivity
+                return withoutLast
+            }
+            // 最后一段小写开头 → 是包名，.* 是类名通配
+            // 例如 com.example.* → 类名 pattern 是 com.example.*
+            return pattern
         }
+        // 不含通配符：检查最后一段是否小写开头（方法名）
         val lastDot = pattern.lastIndexOf('.')
         if (lastDot >= 0) {
             val seg = pattern.substring(lastDot + 1)
