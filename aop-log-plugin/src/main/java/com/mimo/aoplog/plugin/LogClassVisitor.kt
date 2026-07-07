@@ -109,11 +109,61 @@ class LogClassVisitor(
         // 排除规则
         if (PatternMatcher.matches(dotClassName, name, excludePatterns)) return false
 
-        // 注解匹配：如果配置了注解匹配，检查方法上是否有注解
-        // （方法的注解在 visitMethod 之后才会被访问，这里无法直接判断）
-        // 采用策略：如果配置了注解匹配且类级别没有匹配注解，则不插桩
-        // 方法级注解匹配在 LogMethodVisitor 中处理（visitAnnotation 回调）
+        // 方法级匹配：如果 pattern 指定了具体方法名，只插桩匹配的方法
+        // 例如 "com.example.Foo.onCreate" 只插桩 onCreate，不插桩 Foo 的其他方法
+        if (matchPatterns.isNotEmpty()) {
+            val hasMethodSpecificPattern = matchPatterns.any { pattern ->
+                val classPattern = extractClassPart(pattern)
+                // 如果 pattern 的类名部分能匹配当前类，且方法名部分不是通配符
+                PatternMatcher.matchesClassSinglePublic(dotClassName, classPattern) &&
+                    extractMethodPart(pattern) != "*" && extractMethodPart(pattern) != "**"
+            }
+            if (hasMethodSpecificPattern) {
+                // 只匹配指定了方法名的 pattern
+                val matched = matchPatterns.any { pattern ->
+                    val methodPart = extractMethodPart(pattern)
+                    (methodPart == "*" || methodPart == "**" || methodPart == name) &&
+                        PatternMatcher.matchesClassSinglePublic(
+                            dotClassName, extractClassPart(pattern)
+                        )
+                }
+                if (!matched) return false
+            }
+        }
 
         return true
+    }
+
+    /** 从 pattern 中提取类名部分（和 PatternMatcher.extractClassPattern 逻辑一致） */
+    private fun extractClassPart(pattern: String): String {
+        if (pattern.endsWith(".**")) return pattern
+        if (pattern.endsWith(".*")) {
+            val withoutLast = pattern.dropLast(2)
+            if (withoutLast.endsWith(".*") || withoutLast.endsWith(".**")) return withoutLast
+            val lastDot = withoutLast.lastIndexOf('.')
+            if (lastDot >= 0) {
+                val seg = withoutLast.substring(lastDot + 1)
+                if (seg.contains("*")) return withoutLast
+            }
+            return withoutLast
+        }
+        val lastDot = pattern.lastIndexOf('.')
+        if (lastDot >= 0) {
+            val seg = pattern.substring(lastDot + 1)
+            if (seg.isNotEmpty() && seg[0].isLowerCase()) return pattern.substring(0, lastDot)
+        }
+        return pattern
+    }
+
+    /** 从 pattern 中提取方法名部分 */
+    private fun extractMethodPart(pattern: String): String {
+        if (pattern.endsWith(".**")) return "**"
+        if (pattern.endsWith(".*")) return "*"
+        val lastDot = pattern.lastIndexOf('.')
+        if (lastDot >= 0) {
+            val seg = pattern.substring(lastDot + 1)
+            if (seg.isNotEmpty() && seg[0].isLowerCase()) return seg
+        }
+        return "*"  // 没有方法名部分，匹配所有方法
     }
 }

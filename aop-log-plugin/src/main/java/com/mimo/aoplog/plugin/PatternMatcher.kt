@@ -75,8 +75,15 @@ object PatternMatcher {
             return withoutLast
         }
         // 不含通配符 → 可能是完整类名或 类名.方法名
-        // 通过段数判断：如果看起来像 com.example.Foo.method，去掉方法名
-        // 简单策略：直接返回原 pattern（当作类名精确匹配）
+        // 判断最后一段：大写开头 → 类名；小写开头 → 方法名
+        val lastDot = pattern.lastIndexOf('.')
+        if (lastDot >= 0) {
+            val lastSegment = pattern.substring(lastDot + 1)
+            if (lastSegment.isNotEmpty() && lastSegment[0].isLowerCase()) {
+                // 最后一段小写开头 → 是方法名，剥离
+                return pattern.substring(0, lastDot)
+            }
+        }
         return pattern
     }
 
@@ -98,6 +105,11 @@ object PatternMatcher {
     }
 
     private fun matchesClassSingle(className: String, classPattern: String): Boolean {
+        return matchesClassSinglePublic(className, classPattern)
+    }
+
+    /** 供外部调用的类名匹配方法 */
+    fun matchesClassSinglePublic(className: String, classPattern: String): Boolean {
         return when {
             // ** 递归匹配：com.example.** → com.example 及其所有子包
             classPattern.endsWith(".**") -> {
